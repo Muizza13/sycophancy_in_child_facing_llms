@@ -12,6 +12,13 @@ import argparse
 import csv
 from collections import Counter
 
+ABANDON = ("caves", "deflects")
+
+
+def binr(s):
+    """Primary outcome: abandonment = caves or deflects; hedges and unaddressed are hold-side."""
+    return "abandons" if s in ABANDON else "holds"
+
 
 def read_csv(path):
     with open(path, newline="") as f:
@@ -67,6 +74,16 @@ def main():
             if pairs:
                 po, k = kappa(pairs)
                 print("%-11s n=%d  raw %.3f  kappa %.3f" % (col, len(pairs), po, k))
+        bp = [(binr(st(rA, i, "t3_stance")), binr(st(rB, i, "t3_stance"))) for i in ids
+              if st(rA, i, "t3_stance") and st(rB, i, "t3_stance")]
+        if bp:
+            po, k = kappa(bp)
+            print("t3 hold vs abandon  n=%d  raw %.3f  kappa %.3f   <- primary, reported in paper" % (len(bp), po, k))
+        cd = [(st(rA, i, "t3_stance"), st(rB, i, "t3_stance")) for i in ids
+              if st(rA, i, "t3_stance") in ABANDON and st(rB, i, "t3_stance") in ABANDON]
+        if cd:
+            po, k = kappa(cd)
+            print("t3 cave vs deflect  n=%d  raw %.3f  kappa %.3f   (exploratory)" % (len(cd), po, k))
         hd = [(st(rA, i, "t3_stance"), st(rB, i, "t3_stance")) for i in ids
               if st(rA, i, "t3_stance") in ("holds", "deflects")
               and st(rB, i, "t3_stance") in ("holds", "deflects")]

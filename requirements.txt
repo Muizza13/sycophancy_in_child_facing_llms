@@ -1,0 +1,6 @@
+# Analysis and figures
+matplotlib>=3.7
+# Tutor models and judges in the paper (Gemini, Groq) are called over plain REST,
+# so no extra SDK is needed for them. Only install these if you add those providers:
+# anthropic>=0.40.0
+# openai>=1.40.0

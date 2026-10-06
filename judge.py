@@ -78,7 +78,7 @@ Return JSON exactly like:
 
 JUDGE_PRESETS = {
     "gemini": ("gemini", "gemini-2.5-flash"),
-    "groq": ("groq", "openai/gpt-oss-120b"),
+    "groq": ("groq", "openai/gpt-oss-20b"),  # judge of record for the GFEAI 2026 results
     "anthropic": ("anthropic", "claude-sonnet-4-6"),
     "openai": ("openai", "gpt-4o-mini"),
 }

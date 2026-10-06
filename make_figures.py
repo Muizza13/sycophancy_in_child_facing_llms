@@ -60,7 +60,9 @@ def kappa(pairs):
 
 
 def binr(s):
-    return "holds" if n(s) == "holds" else "abandons"
+    """Primary binary outcome. Abandonment = caves or deflects ONLY.
+    Hedges and unaddressed stay on the hold side, matching stats_test.py and the paper."""
+    return "abandons" if n(s) in ABANDON else "holds"
 
 
 def read_csv(path):
@@ -125,7 +127,7 @@ def fig_cave_deflect_stack(dist, outdir):
     ax.bar(x, defl, 0.6, bottom=cave, label="deflect", color="#e08a98")
     ax.set_xticks(list(x)); ax.set_xticklabels(labels, fontsize=9)
     ax.set_ylabel("turn-3 rate"); ax.set_ylim(0, 1)
-    ax.set_title("Abandonment is mostly deflection, not outright caving")
+    ax.set_title("Cave vs deflect split at turn 3 (exploratory)")
     ax.legend(frameon=False); ax.grid(alpha=0.3, axis="y")
     fig.tight_layout()
     p = os.path.join(outdir, "fig3_cave_vs_deflect.png")
@@ -134,7 +136,7 @@ def fig_cave_deflect_stack(dist, outdir):
 
 def fig_tone_bias(tone_a, tone_b, outdir):
     if not tone_a or not tone_b:
-        print("skip fig4 (tone self-bias): need both scored files"); return
+        print("skip fig4 (judge tone gap): need both scored files"); return
 
     def means(tone):
         allw = [w for vals in tone.values() for (w, g) in vals if w is not None]
@@ -143,18 +145,18 @@ def fig_tone_bias(tone_a, tone_b, outdir):
     wa, ga = means(tone_a); wb, gb = means(tone_b)
     fig, ax = plt.subplots(figsize=(6.5, 4.2))
     x = range(2); w = 0.36
-    b1 = ax.bar([i - w / 2 for i in x], [wa, ga], w, label="Gemini judge (same family)", color="#c44e52")
-    b2 = ax.bar([i + w / 2 for i in x], [wb, gb], w, label="GPT-OSS judge (independent)", color="#55a868")
+    b1 = ax.bar([i - w / 2 for i in x], [wa, ga], w, label="Gemini judge", color="#c44e52")
+    b2 = ax.bar([i + w / 2 for i in x], [wb, gb], w, label="GPT-OSS-20b judge", color="#55a868")
     for bars in (b1, b2):
         for b in bars:
             ax.text(b.get_x() + b.get_width() / 2, b.get_height() + 0.03,
                     "%.2f" % b.get_height(), ha="center", fontsize=9)
     ax.set_xticks(list(x)); ax.set_xticklabels(["warmth", "growth"])
     ax.set_ylabel("mean rating (1-5)"); ax.set_ylim(0, 5.4)
-    ax.set_title("Tone self-enhancement: Gemini rates itself warmer than an independent judge")
+    ax.set_title("Judges disagree on absolute tone (measurement caution)")
     ax.legend(frameon=False, fontsize=9); ax.grid(alpha=0.3, axis="y")
     fig.tight_layout()
-    p = os.path.join(outdir, "fig4_tone_self_bias.png")
+    p = os.path.join(outdir, "fig4_judge_tone_gap.png")
     fig.savefig(p, dpi=150, bbox_inches="tight"); plt.close(fig); print("wrote", p)
 
 
