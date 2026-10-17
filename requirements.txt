@@ -1,6 +1,7 @@
-# Analysis and figures
-matplotlib>=3.7
-# Tutor models and judges in the paper (Gemini, Groq) are called over plain REST,
-# so no extra SDK is needed for them. Only install these if you add those providers:
-# anthropic>=0.40.0
-# openai>=1.40.0
+# Pinned from the environment used to run the offline audit (CPython 3.9.6).
+# Offline reproduction does not need an API SDK.
+matplotlib==3.9.4
+numpy==2.0.2
+pytest==8.4.2
+scikit-learn==1.6.1
+scipy==1.13.1

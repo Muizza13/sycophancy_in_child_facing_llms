@@ -1,101 +1,60 @@
-"""Paired significance test for the naive-vs-pedagogical effect.
+"""Paired naive-versus-pedagogical test.
 
-The two conditions run on the SAME scenarios, so the outcomes are paired.
-The correct test for a paired binary outcome (abandoned vs held at a turn) is
-McNemar's test, not a two-proportion z-test. We report the exact (binomial)
-McNemar p-value, appropriate for the modest discordant counts here.
+Default mode is validated: missing and malformed labels are excluded, not
+counted as non-abandonment. --mode historical reproduces the published
+script, which did count a missing label as non-abandonment, and prints that
+warning when it happens.
 """
+
 import argparse
-import json
-import math
+import sys
 
-FAIL_SETS = {
-    "abandon": {"caves", "deflects"},   # primary: any abandonment of the stance
-    "cave": {"caves"},                  # secondary: hard capitulation only
-    "deflect": {"deflects"},            # secondary: face-saving reframe only
-}
+from audit.analysis import judge_block
+from audit.io import load_jsonl
 
 
-def load(path):
-    with open(path) as f:
-        return [json.loads(l) for l in f if l.strip()]
-
-
-def turn_stance(rec, turn):
-    for p in rec["scores"]["per_turn"]:
-        if p["turn"] == turn:
-            return p["stance"]
-    return None
-
-
-def mcnemar_exact(b, c):
-    """Two-sided exact McNemar p-value (binomial, p=0.5 on discordant pairs)."""
-    n = b + c
-    if n == 0:
-        return 1.0
-    k = min(b, c)
-    tail = sum(math.comb(n, i) for i in range(0, k + 1)) * (0.5 ** n)
-    return min(1.0, 2 * tail)
-
-
-def mcnemar_chi2_cc(b, c):
-    """McNemar chi-square with continuity correction (df=1; 3.841 ~ p=.05)."""
-    if b + c == 0:
-        return 0.0
-    return (abs(b - c) - 1) ** 2 / (b + c)
-
-
-def test_one(records, turn, fail_set, model):
-    idx = {(r["case_id"], r["condition"]): r for r in records if r["model"] == model}
-    cases = sorted({cid for (cid, _) in idx})
-    b = c = both_fail = both_hold = naive_fail = ped_fail = n = 0
-    for cid in cases:
-        rn, rp = idx.get((cid, "naive")), idx.get((cid, "pedagogical"))
-        if not rn or not rp:
-            continue
-        on = 1 if turn_stance(rn, turn) in fail_set else 0
-        op = 1 if turn_stance(rp, turn) in fail_set else 0
-        n += 1
-        naive_fail += on
-        ped_fail += op
-        b += (on == 1 and op == 0)   # prompt FIXED this case
-        c += (on == 0 and op == 1)   # prompt WORSENED this case
-        both_fail += (on == 1 and op == 1)
-        both_hold += (on == 0 and op == 0)
-    return {
-        "model": model, "n": n,
-        "naive_rate": naive_fail / n if n else 0,
-        "ped_rate": ped_fail / n if n else 0,
-        "fixed_by_prompt": b, "worsened_by_prompt": c,
-        "both_failed": both_fail, "both_held": both_hold,
-        "p_exact": mcnemar_exact(b, c), "chi2_cc": mcnemar_chi2_cc(b, c),
-    }
-
-
-def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--in", dest="inp", default="runs/scored.jsonl")
-    ap.add_argument("--turn", type=int, default=3)
-    args = ap.parse_args()
-
-    records = load(args.inp)
-    models = sorted({r["model"] for r in records})
-
-    print("McNemar paired test: naive vs pedagogical, turn %d\n" % args.turn)
-    for label, fail_set in FAIL_SETS.items():
-        print("--- failure = %s (%s) ---" % (label, ", ".join(sorted(fail_set))))
-        for m in models:
-            r = test_one(records, args.turn, fail_set, m)
-            sig = "significant" if r["p_exact"] < 0.05 else "not significant"
-            print("  %s  (n=%d pairs)" % (r["model"], r["n"]))
-            print("    naive %.0f%%  ->  pedagogical %.0f%%"
-                  % (100 * r["naive_rate"], 100 * r["ped_rate"]))
-            print("    discordant pairs: prompt fixed %d, prompt worsened %d"
-                  % (r["fixed_by_prompt"], r["worsened_by_prompt"]))
-            print("    McNemar exact p = %.5f (%s);  chi2_cc = %.2f"
-                  % (r["p_exact"], sig, r["chi2_cc"]))
+def _print_block(block):
+    print("Mode: %s" % block["mode"])
+    print("Source: %s" % block["source"])
+    print("Outcome: abandonment (caves + deflects) versus non-abandonment (holds + hedges + unaddressed).")
+    print("Five-way holds are reported separately from non-abandonment.")
+    print("A significant result for one model and a non-significant result for the other does not show different treatment effects.\n")
+    for row in block["paired_turn3"]:
+        print("%s  eligible pairs=%d  excluded=%d  warnings=%d" % (
+            row["model"], row["eligible_pairs"], len(row["excluded"]), len(row["warnings"]),
+        ))
+        if row["eligible_pairs"]:
+            print("  naive %d/%d -> pedagogical %d/%d" % (
+                row["naive_abandonment_count"], row["eligible_pairs"],
+                row["pedagogical_abandonment_count"], row["eligible_pairs"],
+            ))
+        print("  discordant: naive-only %d, pedagogical-only %d" % (
+            row["discordant_naive_only"], row["discordant_pedagogical_only"],
+        ))
+        print("  resolved to five-way holds %d; persistent abandonment %d; new abandonment %d" % (
+            row["resolved_to_five_way_holds"], row["persistent_abandonment"], row["new_abandonment"],
+        ))
+        print("  McNemar exact p = %.10f; chi2_cc = %.3f" % (
+            row["p_exact"], row["chi2_continuity_correction"],
+        ))
+        for item in row["excluded"]:
+            print("  excluded %s (%s)" % (item["record_id"], item["reason"]))
+        for item in row["warnings"]:
+            print("  warning %s" % item.get("record_id", ""))
+            print("    %s" % item.get("warning", item.get("historical_behavior", "")))
         print()
 
 
+def main(argv=None):
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--in", dest="inp", default="runs/scored.jsonl")
+    parser.add_argument("--mode", choices=("validated", "historical"), default="validated")
+    args = parser.parse_args(argv)
+    rows = load_jsonl(args.inp)
+    block = judge_block(rows, "historical" if args.mode == "historical" else "validated", args.inp, args.inp)
+    _print_block(block)
+    return 0
+
+
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

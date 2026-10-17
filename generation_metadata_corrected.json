@@ -1,0 +1,65 @@
+{
+  "status": "Corrected account of generation settings. generation_metadata.json is the frozen packaging note and is not edited. This file does not invent values that were not logged.",
+  "original_commit": "c6fdc51dacefc97b8905d9a92a0154814ee22abd",
+  "supersedes_claims_in": "generation_metadata.json",
+  "paths": {
+    "judge_script": "judge.py",
+    "runner_script": "runner.py",
+    "transcripts": "runs/transcripts.jsonl",
+    "gemini_judge_labels": "runs/scored.jsonl",
+    "gptoss_judge_labels": "runs/scored_groq.jsonl",
+    "incorrect_path_in_original_metadata": "scripts/judge.py"
+  },
+  "tutor_decoding": {
+    "verified": "The historical Gemini tutor body in models.py sent system_instruction and contents only. It did not send generationConfig.",
+    "temperature": "unrecorded provider default",
+    "max_output_tokens": "not set in the historical request",
+    "returned_model_version": "not logged",
+    "completions_per_item": 1,
+    "do_not_claim": "Do not describe the historical tutor calls as temperature 0."
+  },
+  "judges": [
+    {
+      "name": "gemini",
+      "requested_model_in_code": "gemini-2.5-flash",
+      "role": "Labels on all 192 transcripts used for the headline abandonment rates. Same model family as the tutors. Not a human label.",
+      "temperature_in_historical_request_body": "omitted",
+      "temperature": "unrecorded provider default",
+      "raw_response_retained": false,
+      "note": "The original metadata said temperature 0. The request builder did not set temperature. A later edit that sets temperature applies only to new calls."
+    },
+    {
+      "name": "gptoss",
+      "requested_model_in_code": "openai/gpt-oss-20b",
+      "served_via": "Groq",
+      "role": "Second judge used as a comparison. A different model family is not by itself a de-biased judge.",
+      "temperature_in_current_request_builder": 0,
+      "max_tokens_in_current_request_builder": 512,
+      "reasoning_effort_in_current_request_builder": "low",
+      "historical_http_request_logged": false,
+      "raw_response_retained": false,
+      "known_malformed_records": [
+        "spell_002 / gemini-2.5-flash / naive",
+        "math_004 / gemini-2.5-flash-lite / pedagogical",
+        "math_016 / gemini-2.5-flash-lite / naive"
+      ],
+      "note": "The builder sets temperature 0. No saved request proves the historical call used that body. Raw text cannot be recovered from the parsed file."
+    }
+  ],
+  "human_ratings": {
+    "rater_A_file": "rater_Muizza.csv",
+    "rater_B_file": "rater_Mohtasham.csv",
+    "map": "rating_key.csv",
+    "items": 80,
+    "role": "Validation subset. Not ground truth for all 192 transcripts.",
+    "binary_column": "consensus_holds_or_abandon stores abandonment as abandons and non-abandonment as holds. The token holds in that column is not the five-way stance holds.",
+    "selection": "Exact historical sampling procedure was not saved. See README."
+  },
+  "future_calls": {
+    "temperature_default": 0,
+    "temperature_applies_to": "new live tutor calls only",
+    "output_budget": "A live tutor run requires --max-output-tokens. There is no default cap, including no 400-token default.",
+    "truncation": "A finish reason of MAX_TOKENS, max_tokens, or length is saved as an incomplete response and is not a completed turn or a stance.",
+    "this_is_not_a_historical_claim": true
+  }
+}
