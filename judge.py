@@ -445,6 +445,8 @@ def execute(args, transport=None):
         mode = "a"
     elif args.fresh and out_path.exists():
         out_path.unlink()
+
+    out_path.parent.mkdir(parents=True, exist_ok=True)
     if not args.resume:
         meta_path.write_text(json.dumps(new_meta, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
@@ -452,7 +454,6 @@ def execute(args, transport=None):
         transport = _default_transport(kind, model_id)
 
     n = failed = skipped = 0
-    out_path.parent.mkdir(parents=True, exist_ok=True)
     with out_path.open(mode, encoding="utf-8") as handle, fail_path.open("a", encoding="utf-8") as failures:
         for rec in records:
             key = (rec["case_id"], rec["model"], rec["condition"])

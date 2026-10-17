@@ -1,6 +1,13 @@
-"""Deterministic manifest of the frozen pilot files."""
+"""Trusted manifest of the frozen pilot files.
+
+Ordinary reproduction loads the committed manifest and checks hashes.
+Initialization is a separate command. It refuses to overwrite a manifest
+that already exists, and it hashes blobs from the declared original commit.
+"""
 
 import json
+import subprocess
+import tempfile
 from pathlib import Path
 
 from audit.constants import CONDITIONS, FROZEN_RELATIVE, ORIGINAL_COMMIT, TUTOR_MODELS
@@ -80,18 +87,120 @@ def build_manifest(root):
     }
 
 
-def write_manifest(root, path):
-    payload = build_manifest(root)
-    text = json.dumps(payload, indent=2, sort_keys=True) + "\n"
-    Path(path).write_text(text, encoding="utf-8")
+def _manifest_text(payload):
+    return json.dumps(payload, indent=2, sort_keys=True) + "\n"
+
+
+def _git_bytes(root, commit, relative):
+    result = subprocess.run(
+        ["git", "show", "%s:%s" % (commit, relative)],
+        cwd=str(root),
+        check=False,
+        capture_output=True,
+    )
+    if result.returncode != 0:
+        detail = result.stderr.decode("utf-8", "replace").strip()
+        raise SystemExit(
+            "refusing to build a manifest from working-tree files. "
+            "git show %s:%s failed: %s" % (commit, relative, detail)
+        )
+    return result.stdout
+
+
+def build_manifest_from_commit(root, commit=None):
+    """Hash the frozen paths as stored at the original commit."""
+    root = Path(root)
+    commit = commit or ORIGINAL_COMMIT
+    with tempfile.TemporaryDirectory() as tmp_name:
+        tmp = Path(tmp_name)
+        for relative in FROZEN_RELATIVE:
+            dest = tmp / relative
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            dest.write_bytes(_git_bytes(root, commit, relative))
+        return build_manifest(tmp)
+
+
+def initialize_manifest(root, path, commit=None):
+    path = Path(path)
+    if path.exists():
+        raise SystemExit(
+            "refusing to overwrite trusted manifest %s. "
+            "Initialization does not replace an existing baseline." % path
+        )
+    payload = build_manifest_from_commit(root, commit)
+    path.write_text(_manifest_text(payload), encoding="utf-8")
     return payload
 
 
-def hashes_match(root, manifest):
+def verify_trusted_manifest(root, path):
+    """Return integrity problems. An empty list means the frozen files match."""
     root = Path(root)
-    mismatches = []
+    path = Path(path)
+    if not path.exists():
+        return [{"path": str(path), "reason": "missing_manifest", "detail": "trusted manifest is absent"}]
+    try:
+        manifest = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError, UnicodeError) as exc:
+        return [{"path": str(path), "reason": "malformed_manifest", "detail": str(exc)}]
+    if not isinstance(manifest, dict) or not isinstance(manifest.get("frozen_files"), list):
+        return [{
+            "path": str(path),
+            "reason": "malformed_manifest",
+            "detail": "frozen_files must be a list",
+        }]
+    problems = []
+    listed = {}
     for entry in manifest["frozen_files"]:
-        current = sha256_file(root / entry["path"])
+        if not isinstance(entry, dict) or "path" not in entry or "sha256" not in entry:
+            problems.append({
+                "path": str(path),
+                "reason": "malformed_manifest",
+                "detail": "a frozen_files entry is missing path or sha256",
+            })
+            continue
+        listed[entry["path"]] = entry
+    if any(item["reason"] == "malformed_manifest" for item in problems):
+        return problems
+    expected = list(FROZEN_RELATIVE)
+    for relative in expected:
+        if relative not in listed:
+            problems.append({
+                "path": relative,
+                "reason": "incomplete_inventory",
+                "detail": "frozen file is not listed in the trusted manifest",
+            })
+    for relative, entry in listed.items():
+        if relative not in expected:
+            problems.append({
+                "path": relative,
+                "reason": "incomplete_inventory",
+                "detail": "manifest lists a path outside the expected frozen inventory",
+            })
+            continue
+        file_path = root / relative
+        if not file_path.is_file():
+            problems.append({"path": relative, "reason": "missing_file", "detail": "frozen file is absent"})
+            continue
+        current = sha256_file(file_path)
         if current != entry["sha256"]:
-            mismatches.append({"path": entry["path"], "manifest": entry["sha256"], "current": current})
-    return mismatches
+            problems.append({
+                "path": relative,
+                "reason": "hash_mismatch",
+                "manifest": entry["sha256"],
+                "current": current,
+                "detail": "current bytes do not match the trusted manifest",
+            })
+    return problems
+
+
+def format_integrity_problems(problems):
+    lines = ["%d frozen-evidence integrity problem(s)" % len(problems)]
+    for item in problems:
+        if item["reason"] == "hash_mismatch":
+            lines.append(
+                "hash_mismatch\t%s\tmanifest %s\tcurrent %s"
+                % (item["path"], item["manifest"], item["current"])
+            )
+        else:
+            lines.append("%s\t%s\t%s" % (item["reason"], item["path"], item.get("detail", "")))
+    return "\n".join(lines)

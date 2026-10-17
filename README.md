@@ -17,8 +17,10 @@ that was never committed.
 Software paths are under MIT. Author-owned research materials are under CC BY 4.0.
 The path list is `LICENSING.md`. Model outputs are outside both grants, and
 provider terms for Gemini and Groq were not reviewed. `rater_Muizza.csv`,
-`rater_Mohtasham.csv`, and `adjudication_filled.csv` stay unlicensed until both
-raters consent. Those two items are unresolved.
+`rater_Mohtasham.csv`, `adjudication_filled.csv`, and `consensus_labels.csv`
+stay unlicensed until the relevant ownership and consent are confirmed. A future
+license grant for those files requires that confirmation. Rater consent and
+provider-term review are unresolved.
 
 ## What the pilot measured
 
@@ -62,14 +64,17 @@ validation subset. It is not human ground truth for the other transcripts.
 | Gemini 2.5 Flash-Lite | 19/48 | 10/48 | 0.0635681 |
 
 For Flash, 26 of the 27 naive abandonments became five-way holds, 1 stayed
-abandonment (`fact_006`), and 4 new abandonments appeared. Cave-only and
-deflect-only splits are exploratory. Human agreement on that split is low
-(kappa 0.11 on the items both raters placed in `{caves, deflects}`).
+abandonment (`fact_006`), and 4 new abandonments appeared. Human agreement on
+the cave versus deflect split is low, kappa 0.11 on the items both raters
+placed in caves or deflects.
 
-The primary tests are the two exact McNemar tests in the table. Other cuts,
-including tone, the GPT-OSS judge, and the human kappa values, are exploratory.
-Flash is under 0.05 and Flash-Lite is not. That pair of p-values does not show
-that the two tutors have different treatment effects.
+The two reported Gemini-judge turn-3 abandonment comparisons are the primary
+reported comparisons of this pilot. Cave-only, deflect-only, five-way
+transitions, tone, cross-judge analyses, and human kappa are exploratory. The
+reported p-values are unadjusted for multiplicity. This description is not a
+preregistration. Flash is under 0.05 and Flash-Lite is not. A significant
+result for one tutor and a nonsignificant result for the other does not
+establish different treatment effects.
 
 ## Human validation subset
 
@@ -113,12 +118,14 @@ the headline. Where the GPT-OSS file has extra turn ids, the published script
 still read the first entry whose turn id was 3 and warned about it here. That
 reading is not a repaired label.
 
-Validated sensitivity drops a record whose judge turns are not exactly 1, 2,
-and 3, whose stance is outside the five labels, whose tone score is not a
-number from 1 to 5, or whose boolean field is not a boolean. A duplicated key
-is dropped rather than overwritten. If either side of a naive/pedagogical pair
-is ineligible, the whole pair is dropped. Exclusion does not recover the
-correct historical label.
+Validated sensitivity uses the validator's eligibility decisions. It drops a
+record whose judge turns are not exactly 1, 2, and 3, whose stance is outside
+the five labels, whose tone score is not a number from 1 to 5, whose boolean
+field is not a boolean, or whose transcript text does not match the source
+conversation. A duplicated key is dropped rather than overwritten. If either
+side of a naive/pedagogical pair is ineligible, the whole pair is dropped.
+Cross-judge comparisons keep records that are eligible on both sides. Exclusion
+does not recover the correct historical label.
 
 On the Gemini judge file the two paths match: 0 records excluded, same counts,
 same p-values.
@@ -154,14 +161,23 @@ packages are in `requirements.txt`. No API key is used.
 
 ```bash
 pip install -r requirements.txt
+python -m pytest -q
 python -m audit reproduce
 ```
 
-`python -m audit reproduce` writes `evidence_manifest.json`, validates the
-frozen files, writes `audit_out/summary.json`, and writes the validated figures
-to `figures/validated_v2/`. It exits 0 when the Gemini headline counts match the
-table above. It still records the three GPT-OSS alignment defects. It does not
-replace those labels.
+`python -m pytest -q` is the test command the offline workflow runs. `pytest -q`
+alone does not put this checkout on the import path.
+
+`python -m audit reproduce` loads the committed `evidence_manifest.json` and
+checks every frozen file hash before it writes anything. It does not regenerate
+that manifest. It then runs validation. The only issues it accepts are the three
+documented GPT-OSS alignment defects above. Any other defect exits nonzero
+before it replaces `audit_out/summary.json` or the validated figures. When those
+gates pass, and the Gemini headline counts match the table above, it writes
+`audit_out/summary.json` and `figures/validated_v2/` and exits 0.
+
+`python -m audit manifest` initializes a manifest from commit `c6fdc51` and
+refuses to overwrite an existing file. It does not hash the working tree.
 
 `python -m audit validate` is the strict gate and exits 1 on this repository.
 

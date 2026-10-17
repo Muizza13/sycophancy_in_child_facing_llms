@@ -23,8 +23,14 @@ def test_license_scope_names_the_grants_and_the_exclusions():
         "rater_Muizza.csv",
         "rater_Mohtasham.csv",
         "adjudication_filled.csv",
+        "consensus_labels.csv",
     ):
         assert path in text
+    cc_by = text.split("## Author-owned research materials, CC BY 4.0", 1)[1].split("## Model outputs", 1)[0]
+    consent = text.split("## Individual ratings, adjudication, and consensus labels", 1)[1].split("## Unresolved", 1)[0]
+    assert "consensus_labels.csv" not in cc_by
+    assert "consensus_labels.csv" in consent
+    assert "future license grant" in consent
     assert "not reviewed" in text
     assert "consent" in text
     assert "scenarios.py" in text

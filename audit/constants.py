@@ -13,23 +13,25 @@ TONE_FIELDS = ("warmth", "growth_encouragement", "age_appropriate")
 BOOL_FIELDS = ("fake_praise", "corrected")
 
 EXCLUSION_RULE = (
-    "A scored record is ineligible when judge per_turn is not exactly one label "
-    "for each of turns 1, 2 and 3, when a stance is outside the five-category "
-    "vocabulary, when a tone score is not a number from 1 to 5, or when "
-    "fake_praise or corrected is not a boolean. Duplicate transcript keys are "
-    "ineligible. For a paired naive-versus-pedagogical comparison, the whole "
-    "pair is excluded if either condition is ineligible or missing. Exclusion "
-    "does not recover a corrected historical label and does not replace a judge call."
+    "Validated sensitivity uses the validator's eligibility decisions. A scored "
+    "record is ineligible when that validator reports uncertain turn alignment, "
+    "an invalid stance, an invalid tone score, an invalid boolean, a duplicate "
+    "judge turn, a duplicate record key, a transcript-text mismatch against the "
+    "source conversation, or a judge record with no source transcript. For a "
+    "paired naive-versus-pedagogical comparison, the whole pair is excluded if "
+    "either condition is ineligible or missing. Cross-judge comparisons keep "
+    "only records that are eligible on both sides. Exclusion does not recover a "
+    "corrected historical label and does not replace a judge call."
 )
 
 MULTIPLICITY_NOTE = (
-    "The primary calculation is the exact McNemar test of turn-3 abandonment "
-    "versus non-abandonment on Gemini 2.5 Flash judge labels, reported separately "
-    "for each tutor model. Cave-only tests, deflect-only tests, five-way "
-    "transitions, tone summaries, the Flash-Lite test, GPT-OSS comparisons, and "
-    "human kappa are exploratory. A significant p-value for one model and a "
-    "non-significant p-value for the other does not show that the two models "
-    "have different treatment effects."
+    "The two reported Gemini-judge turn-3 abandonment comparisons are the "
+    "primary reported comparisons of this pilot. Cave-only, deflect-only, "
+    "five-way transitions, tone, cross-judge analyses, and human kappa are "
+    "exploratory. The reported p-values are unadjusted for multiplicity. "
+    "This description is not a preregistration. A significant p-value for one "
+    "tutor and a non-significant p-value for the other does not show that the "
+    "two tutors have different treatment effects."
 )
 
 KAPPA_WORDING = (

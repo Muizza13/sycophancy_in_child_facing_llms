@@ -22,13 +22,23 @@ from audit.io import format_key, load_cases, load_csv, load_jsonl, transcript_ke
 
 
 class Issue:
-    def __init__(self, code, record_id, detail):
+    def __init__(self, code, record_id, detail, source=None, judge=None, turn_ids=None):
         self.code = code
         self.record_id = record_id
         self.detail = detail
+        self.source = source
+        self.judge = judge
+        self.turn_ids = None if turn_ids is None else list(turn_ids)
 
     def as_dict(self):
-        return {"code": self.code, "record_id": self.record_id, "detail": self.detail}
+        payload = {"code": self.code, "record_id": self.record_id, "detail": self.detail}
+        if self.source is not None:
+            payload["source"] = self.source
+        if self.judge is not None:
+            payload["judge"] = self.judge
+        if self.turn_ids is not None:
+            payload["turn_ids"] = list(self.turn_ids)
+        return payload
 
 
 def _tone_ok(value):
@@ -110,14 +120,26 @@ def validate_transcript_records(rows, case_ids, models, conditions):
     return issues
 
 
-def _turn_alignment_issues(record_id, per_turn):
+def _turn_alignment_issues(record_id, per_turn, source=None, judge=None):
     issues = []
     if not isinstance(per_turn, list):
-        return [Issue("uncertain_turn_alignment", record_id, "per_turn is not a list")]
+        return [Issue(
+            "uncertain_turn_alignment",
+            record_id,
+            "per_turn is not a list",
+            source=source,
+            judge=judge,
+        )]
     ids = []
     for entry in per_turn:
         if not isinstance(entry, dict):
-            issues.append(Issue("uncertain_turn_alignment", record_id, "per_turn entry is not an object"))
+            issues.append(Issue(
+                "uncertain_turn_alignment",
+                record_id,
+                "per_turn entry is not an object",
+                source=source,
+                judge=judge,
+            ))
             continue
         ids.append(entry.get("turn"))
         if entry.get("stance") not in STANCES:
@@ -125,12 +147,16 @@ def _turn_alignment_issues(record_id, per_turn):
                 "invalid_stance",
                 record_id,
                 "turn %s stance %r is outside %s" % (entry.get("turn"), entry.get("stance"), list(STANCES)),
+                source=source,
+                judge=judge,
             ))
     if len(ids) != len(set(ids)):
         issues.append(Issue(
             "duplicate_judge_turn",
             record_id,
             "duplicate turn ids %s" % ids,
+            source=source,
+            judge=judge,
         ))
     if ids != list(TURN_IDS):
         issues.append(Issue(
@@ -138,11 +164,14 @@ def _turn_alignment_issues(record_id, per_turn):
             record_id,
             "expected exactly turn ids 1, 2 and 3; found %s. "
             "Alignment is uncertain. Labels were not truncated or remapped." % ids,
+            source=source,
+            judge=judge,
+            turn_ids=ids,
         ))
     return issues
 
 
-def validate_scored_records(rows, transcripts_by_key, judge_name):
+def validate_scored_records(rows, transcripts_by_key, judge_name, source=None, check_transcripts=True):
     issues = []
     seen = defaultdict(list)
     for row in rows:
@@ -150,26 +179,37 @@ def validate_scored_records(rows, transcripts_by_key, judge_name):
         key = transcript_key(rec)
         record_id = format_key(key)
         seen[key].append(row["line"])
-        source = transcripts_by_key.get(key)
-        if source is None:
-            issues.append(Issue("judge_without_transcript", record_id, "%s record has no source transcript" % judge_name))
-        else:
-            left = rec.get("turns")
-            right = source["rec"].get("turns")
-            if left != right:
+        if check_transcripts:
+            transcript = transcripts_by_key.get(key)
+            if transcript is None:
                 issues.append(Issue(
-                    "transcript_text_mismatch",
+                    "judge_without_transcript",
                     record_id,
-                    "%s turns do not match the source transcript text" % judge_name,
+                    "%s record has no source transcript" % judge_name,
+                    source=source,
+                    judge=judge_name,
                 ))
+            else:
+                left = rec.get("turns")
+                right = transcript["rec"].get("turns")
+                if left != right:
+                    issues.append(Issue(
+                        "transcript_text_mismatch",
+                        record_id,
+                        "%s turns do not match the source transcript text" % judge_name,
+                        source=source,
+                        judge=judge_name,
+                    ))
         scores = rec.get("scores") or {}
-        issues.extend(_turn_alignment_issues(record_id, scores.get("per_turn")))
+        issues.extend(_turn_alignment_issues(record_id, scores.get("per_turn"), source=source, judge=judge_name))
         for field in TONE_FIELDS:
             if not _tone_ok(scores.get(field)):
                 issues.append(Issue(
                     "invalid_tone",
                     record_id,
                     "%s = %r" % (field, scores.get(field)),
+                    source=source,
+                    judge=judge_name,
                 ))
         for field in BOOL_FIELDS:
             if not isinstance(scores.get(field), bool):
@@ -177,6 +217,8 @@ def validate_scored_records(rows, transcripts_by_key, judge_name):
                     "invalid_boolean",
                     record_id,
                     "%s = %r (%s)" % (field, scores.get(field), type(scores.get(field)).__name__),
+                    source=source,
+                    judge=judge_name,
                 ))
     for key, lines in sorted(seen.items()):
         if len(lines) > 1:
@@ -184,13 +226,27 @@ def validate_scored_records(rows, transcripts_by_key, judge_name):
                 "duplicate_judge_record",
                 format_key(key),
                 "%s lines %s" % (judge_name, lines),
+                source=source,
+                judge=judge_name,
             ))
     expected = set(transcripts_by_key)
     found = set(seen)
     for key in sorted(expected - found):
-        issues.append(Issue("missing_judge_record", format_key(key), "%s record is absent" % judge_name))
+        issues.append(Issue(
+            "missing_judge_record",
+            format_key(key),
+            "%s record is absent" % judge_name,
+            source=source,
+            judge=judge_name,
+        ))
     for key in sorted(found - expected):
-        issues.append(Issue("unexpected_judge_record", format_key(key), "%s record is not in the transcript file" % judge_name))
+        issues.append(Issue(
+            "unexpected_judge_record",
+            format_key(key),
+            "%s record is not in the transcript file" % judge_name,
+            source=source,
+            judge=judge_name,
+        ))
     return issues
 
 
@@ -406,8 +462,8 @@ def validate_repository(root):
     issues.extend(validate_cases(cases))
     issues.extend(validate_transcript_records(transcripts, case_ids, TUTOR_MODELS, CONDITIONS))
     by_key = {transcript_key(row["rec"]): row for row in transcripts}
-    issues.extend(validate_scored_records(gemini, by_key, "gemini"))
-    issues.extend(validate_scored_records(groq, by_key, "gpt-oss"))
+    issues.extend(validate_scored_records(gemini, by_key, "gemini", source="runs/scored.jsonl"))
+    issues.extend(validate_scored_records(groq, by_key, "gpt-oss", source="runs/scored_groq.jsonl"))
     issues.extend(validate_human(key_rows, rater_rows, consensus_rows, adjudication_rows, by_key))
     return issues
 
@@ -415,5 +471,71 @@ def validate_repository(root):
 def format_issues(issues):
     lines = ["%d validation issue(s)" % len(issues)]
     for issue in issues:
-        lines.append("%s\t%s\t%s" % (issue.code, issue.record_id, issue.detail))
+        origin = issue.source or issue.judge or ""
+        lines.append("%s\t%s\t%s\t%s" % (issue.code, issue.record_id, origin, issue.detail))
     return "\n".join(lines)
+
+
+# Exact historical defects. The same code on another record, or another code
+# on one of these records, is not covered.
+DOCUMENTED_ALIGNMENT_EXCEPTIONS = (
+    {
+        "source": "runs/scored_groq.jsonl",
+        "judge": "gpt-oss",
+        "record_id": "spell_002 / gemini-2.5-flash / naive",
+        "code": "uncertain_turn_alignment",
+        "turn_ids": (1, 2, 3, 4),
+    },
+    {
+        "source": "runs/scored_groq.jsonl",
+        "judge": "gpt-oss",
+        "record_id": "math_004 / gemini-2.5-flash-lite / pedagogical",
+        "code": "uncertain_turn_alignment",
+        "turn_ids": (1, 2, 3, 4),
+    },
+    {
+        "source": "runs/scored_groq.jsonl",
+        "judge": "gpt-oss",
+        "record_id": "math_016 / gemini-2.5-flash-lite / naive",
+        "code": "uncertain_turn_alignment",
+        "turn_ids": (1, 2, 3, 4, 5, 6),
+    },
+)
+
+SCORED_INELIGIBLE_CODES = frozenset({
+    "uncertain_turn_alignment",
+    "invalid_stance",
+    "invalid_tone",
+    "invalid_boolean",
+    "duplicate_judge_turn",
+    "duplicate_judge_record",
+    "transcript_text_mismatch",
+    "judge_without_transcript",
+})
+
+
+def is_documented_exception(issue):
+    found = tuple(issue.turn_ids) if issue.turn_ids is not None else None
+    for item in DOCUMENTED_ALIGNMENT_EXCEPTIONS:
+        if (
+            issue.code == item["code"]
+            and issue.record_id == item["record_id"]
+            and issue.source == item["source"]
+            and issue.judge == item["judge"]
+            and found == item["turn_ids"]
+        ):
+            return True
+    return False
+
+
+def unexpected_issues(issues):
+    return [issue for issue in issues if not is_documented_exception(issue)]
+
+
+def ineligible_reasons(issues):
+    grouped = {}
+    for issue in issues:
+        if issue.code not in SCORED_INELIGIBLE_CODES:
+            continue
+        grouped.setdefault(issue.record_id, []).append("%s: %s" % (issue.code, issue.detail))
+    return grouped

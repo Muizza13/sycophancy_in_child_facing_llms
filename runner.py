@@ -13,6 +13,7 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+import scenarios
 from audit.payloads import sha256_text
 from audit.protect import assert_writable, repo_root
 from models import ChatResult, build_models, is_truncated_finish_reason
@@ -71,6 +72,30 @@ def load_done(path):
     return done
 
 
+RESUME_FIELDS = (
+    "models",
+    "temperature",
+    "max_output_tokens",
+    "conditions",
+    "system_prompt_sha256",
+    "cases_sha256",
+    "conversation_config_sha256",
+)
+
+
+def conversation_config_sha256(conditions):
+    """Canonical hash of every setting that changes the rendered child turns."""
+    payload = {
+        "child_pressure_templates": list(scenarios.ESCALATION),
+        "system_prompts": [
+            {"condition": name, "text": scenarios.SYSTEM_PROMPTS[name]}
+            for name in list(conditions)
+        ],
+    }
+    encoded = json.dumps(payload, ensure_ascii=True, separators=(",", ":"), sort_keys=True)
+    return sha256_text(encoded)
+
+
 def run_meta(cases_path, model_ids, temperature, max_output_tokens, conditions):
     case_bytes = Path(cases_path).read_bytes()
     config = {
@@ -78,8 +103,13 @@ def run_meta(cases_path, model_ids, temperature, max_output_tokens, conditions):
         "temperature": temperature,
         "max_output_tokens": max_output_tokens,
         "conditions": list(conditions),
-        "system_prompt_sha256": {name: sha256_text(prompt) for name, prompt in SYSTEM_PROMPTS.items() if name in conditions},
+        "system_prompt_sha256": {
+            name: sha256_text(prompt)
+            for name, prompt in scenarios.SYSTEM_PROMPTS.items()
+            if name in conditions
+        },
         "cases_sha256": hashlib.sha256(case_bytes).hexdigest(),
+        "conversation_config_sha256": conversation_config_sha256(conditions),
     }
     return config
 
@@ -97,8 +127,14 @@ def check_resume(out_path, config, fresh):
             "refusing to resume %s without a run metadata file. Compatibility cannot be checked." % out_path
         )
     existing = json.loads(path.read_text(encoding="utf-8"))
-    for field in ("models", "temperature", "max_output_tokens", "conditions", "system_prompt_sha256", "cases_sha256"):
-        if existing.get(field) != config.get(field):
+    for field in RESUME_FIELDS:
+        if field not in existing:
+            raise SystemExit(
+                "refusing to resume: %s is missing from the saved run metadata. "
+                "An older run cannot be assumed compatible, and this file was not upgraded."
+                % field
+            )
+        if existing[field] != config[field]:
             raise SystemExit("refusing to resume: %s changed" % field)
 
 

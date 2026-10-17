@@ -5,9 +5,9 @@ from pathlib import Path
 
 from audit.analysis import build_report, figure_inputs, load_study
 from audit.figures import render
-from audit.manifest import build_manifest, hashes_match, write_manifest
+from audit.manifest import format_integrity_problems, verify_trusted_manifest
 from audit.sample import legacy_unbounded_selection, turn3_stance_map
-from audit.validate import format_issues, validate_repository
+from audit.validate import format_issues, is_documented_exception, unexpected_issues, validate_repository
 
 
 def _json_ready(value):
@@ -158,19 +158,33 @@ def write_figure_bundle(report, figure_dir, root):
 def run(root, outdir, manifest_path=None, figure_dir=None):
     root = Path(root)
     outdir = Path(outdir)
-    outdir.mkdir(parents=True, exist_ok=True)
-    manifest = build_manifest(root)
-    target = Path(manifest_path) if manifest_path else root / "evidence_manifest.json"
-    write_manifest(root, target)
-    mismatches = hashes_match(root, manifest)
+    manifest_file = Path(manifest_path) if manifest_path else root / "evidence_manifest.json"
+    problems = verify_trusted_manifest(root, manifest_file)
+    if problems:
+        print(format_integrity_problems(problems))
+        print("refusing to write outputs. The trusted manifest was not changed.")
+        return 2
     issues = validate_repository(root)
+    unexpected = unexpected_issues(issues)
+    if unexpected:
+        print(format_issues(unexpected))
+        print(
+            "refusing to write validated outputs: %d unexpected validation issue(s). "
+            "Headline agreement does not waive these issues." % len(unexpected)
+        )
+        return 2
     study = load_study(root)
     report = build_report(study)
+    if not report["published_checks"]["matches_published_gemini_headline"]:
+        print("historical Gemini headline check failed. Validated outputs were not written.")
+        return 2
     report["human_sample"] = human_sample_note(study)
     report["validation_issue_count"] = len(issues)
     report["validation_issues"] = [issue.as_dict() for issue in issues]
-    report["frozen_hash_mismatches"] = mismatches
+    report["documented_exceptions"] = [issue.as_dict() for issue in issues if is_documented_exception(issue)]
+    report["frozen_hash_mismatches"] = []
     report["figure_inputs"] = figure_inputs(report)
+    outdir.mkdir(parents=True, exist_ok=True)
     summary_path = outdir / "summary.json"
     summary_path.write_text(
         json.dumps(_json_ready(report), indent=2, sort_keys=True) + "\n",
@@ -179,8 +193,4 @@ def run(root, outdir, manifest_path=None, figure_dir=None):
     (outdir / "validation.txt").write_text(format_issues(issues) + "\n", encoding="utf-8")
     bundle = Path(figure_dir) if figure_dir else outdir / "figures"
     write_figure_bundle(report, bundle, root)
-    if mismatches:
-        return 2
-    if not report["published_checks"]["matches_published_gemini_headline"]:
-        return 2
     return 0

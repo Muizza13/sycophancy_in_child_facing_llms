@@ -18,6 +18,7 @@ from audit.constants import (
     TURN_IDS,
 )
 from audit.io import format_key, load_cases, load_csv, load_jsonl, transcript_key
+from audit.validate import ineligible_reasons, validate_scored_records
 from audit.stats import (
     binary_outcome,
     cohens_kappa,
@@ -104,8 +105,9 @@ def _record_eligible(rec):
     return True, ""
 
 
-def _pair_tables(rows, mode):
+def _pair_tables(rows, mode, ineligible=None):
     """Per-model paired turn-3 abandonment plus the warnings or exclusions."""
+    ineligible = ineligible or {}
     by_model_rows = defaultdict(list)
     for row in rows:
         by_model_rows[row["rec"]["model"]].append(row)
@@ -118,7 +120,6 @@ def _pair_tables(rows, mode):
         eligible_pairs = []
         if duplicates and mode == "historical":
             warnings.extend(duplicates)
-        duplicate_cases = {item["record_id"].split(" / ")[0] for item in duplicates}
         naive_fail = ped_fail = b = c = both_fail = both_hold = 0
         transitions = []
         for case_id in case_ids:
@@ -131,19 +132,12 @@ def _pair_tables(rows, mode):
                     "present": [cond for cond, row in (("naive", naive), ("pedagogical", pedagogical)) if row is not None],
                 })
                 continue
-            if mode == "validated" and case_id in duplicate_cases:
-                excluded.append({
-                    "record_id": case_id,
-                    "reason": "duplicate_transcript_key",
-                    "detail": "both conditions excluded; no record was chosen",
-                })
-                continue
-            reasons = []
             if mode == "validated":
-                for condition, row in (("naive", naive), ("pedagogical", pedagogical)):
-                    ok, reason = _record_eligible(row["rec"])
-                    if not ok:
-                        reasons.append("%s: %s" % (condition, reason))
+                reasons = []
+                for condition in ("naive", "pedagogical"):
+                    record_id = format_key((case_id, model, condition))
+                    if record_id in ineligible:
+                        reasons.append("%s: %s" % (condition, "; ".join(ineligible[record_id])))
                 if reasons:
                     excluded.append({
                         "record_id": "%s / %s" % (case_id, model),
@@ -237,22 +231,21 @@ def _pair_tables(rows, mode):
     return models
 
 
-def _distribution(rows, mode):
+def _distribution(rows, mode, ineligible=None):
+    ineligible = ineligible or {}
     chosen, duplicates = _index(rows)
     buckets = defaultdict(list)
     uncertain = []
     excluded = []
     for key, row in chosen.items():
         record_id = format_key(key)
-        if duplicates and mode == "validated" and any(item["record_id"] == record_id for item in duplicates):
-            excluded.append({"record_id": record_id, "reason": "duplicate_transcript_key"})
+        if mode == "validated" and record_id in ineligible:
+            excluded.append({"record_id": record_id, "reason": "; ".join(ineligible[record_id])})
             continue
-        ok, reason = _record_eligible(row["rec"])
-        if mode == "validated" and not ok:
-            excluded.append({"record_id": record_id, "reason": reason})
-            continue
-        if not ok:
-            uncertain.append({"record_id": record_id, "turn_ids": _alignment(row["rec"])[1]})
+        if mode != "validated":
+            ok, _reason = _record_eligible(row["rec"])
+            if not ok:
+                uncertain.append({"record_id": record_id, "turn_ids": _alignment(row["rec"])[1]})
         for entry in row["rec"]["scores"]["per_turn"]:
             if not isinstance(entry, dict):
                 continue
@@ -288,15 +281,16 @@ def _distribution(rows, mode):
     }
 
 
-def _tone(rows, mode):
+def _tone(rows, mode, ineligible=None):
+    ineligible = ineligible or {}
     chosen, _duplicates = _index(rows)
     excluded = []
     values = {field: [] for field in TONE_FIELDS}
     by_outcome = {"abandonment": [], "non_abandonment": []}
     for key, row in chosen.items():
-        ok, reason = _record_eligible(row["rec"])
-        if mode == "validated" and not ok:
-            excluded.append({"record_id": format_key(key), "reason": reason})
+        record_id = format_key(key)
+        if mode == "validated" and record_id in ineligible:
+            excluded.append({"record_id": record_id, "reason": "; ".join(ineligible[record_id])})
             continue
         scores = row["rec"]["scores"]
         for field in TONE_FIELDS:
@@ -353,17 +347,34 @@ def _transition_matrix(transitions):
     return matrix
 
 
-def judge_block(rows, mode, judge_name, source):
-    paired = _pair_tables(rows, mode)
+def _validated_issues(rows, judge_name, source, transcripts_by_key, validator_issues):
+    if validator_issues is not None:
+        return validator_issues
+    return validate_scored_records(
+        rows,
+        {} if transcripts_by_key is None else transcripts_by_key,
+        judge_name,
+        source=source,
+        check_transcripts=transcripts_by_key is not None,
+    )
+
+
+def judge_block(rows, mode, judge_name, source, transcripts_by_key=None, validator_issues=None):
+    ineligible = {}
+    if mode == "validated":
+        ineligible = ineligible_reasons(
+            _validated_issues(rows, judge_name, source, transcripts_by_key, validator_issues)
+        )
+    paired = _pair_tables(rows, mode, ineligible)
     for model_result in paired:
         model_result["transition_matrix_naive_to_pedagogical"] = _transition_matrix(model_result["transitions"])
     return {
         "judge": judge_name,
         "source": source,
         "mode": mode,
-        "distribution": _distribution(rows, mode),
+        "distribution": _distribution(rows, mode, ineligible),
         "paired_turn3": paired,
-        "tone": _tone(rows, mode),
+        "tone": _tone(rows, mode, ineligible),
     }
 
 
@@ -450,29 +461,34 @@ def _stances_by_turn(rec):
     return found
 
 
-def compare_judges(rows_a, rows_b, mode):
+def compare_judges(rows_a, rows_b, mode, transcripts_by_key=None, issues_a=None, issues_b=None, source_a=None, source_b=None):
     """Intersect judge files and report every key or turn that is not used."""
     index_a, dup_a = _index(rows_a)
     index_b, dup_b = _index(rows_b)
     only_a = sorted(set(index_a) - set(index_b))
     only_b = sorted(set(index_b) - set(index_a))
+    reasons_a = {}
+    reasons_b = {}
+    if mode == "validated":
+        reasons_a = ineligible_reasons(
+            _validated_issues(rows_a, "judge_a", source_a, transcripts_by_key, issues_a)
+        )
+        reasons_b = ineligible_reasons(
+            _validated_issues(rows_b, "judge_b", source_b, transcripts_by_key, issues_b)
+        )
     excluded = []
     pairs = []
     unmatched_turns = []
     for key in sorted(set(index_a) & set(index_b)):
         record_id = format_key(key)
-        if mode == "validated":
-            ok_a, reason_a = _record_eligible(index_a[key]["rec"])
-            ok_b, reason_b = _record_eligible(index_b[key]["rec"])
-            if not ok_a or not ok_b:
-                excluded.append({
-                    "record_id": record_id,
-                    "reason": "; ".join(part for part in (
-                        "" if ok_a else "A: " + reason_a,
-                        "" if ok_b else "B: " + reason_b,
-                    ) if part),
-                })
-                continue
+        if mode == "validated" and (record_id in reasons_a or record_id in reasons_b):
+            parts = []
+            if record_id in reasons_a:
+                parts.append("A: " + "; ".join(reasons_a[record_id]))
+            if record_id in reasons_b:
+                parts.append("B: " + "; ".join(reasons_b[record_id]))
+            excluded.append({"record_id": record_id, "reason": "; ".join(parts)})
+            continue
         turns_a = _stances_by_turn(index_a[key]["rec"])
         turns_b = _stances_by_turn(index_b[key]["rec"])
         shared = sorted(set(turns_a) & set(turns_b))
@@ -526,6 +542,7 @@ def _conclusion_same(historical_row, sensitivity_row):
 
 
 def build_report(study):
+    by_key = {transcript_key(row["rec"]): row for row in study["transcripts"]}
     historical_gemini = judge_block(
         study["gemini"], "historical", "gemini-2.5-flash", "runs/scored.jsonl",
     )
@@ -534,9 +551,11 @@ def build_report(study):
     )
     sensitivity_gemini = judge_block(
         study["gemini"], "validated", "gemini-2.5-flash", "runs/scored.jsonl",
+        transcripts_by_key=by_key,
     )
     sensitivity_groq = judge_block(
         study["groq"], "validated", "openai/gpt-oss-20b via Groq", "runs/scored_groq.jsonl",
+        transcripts_by_key=by_key,
     )
     agreement = agreement_block(study, study["gemini"], study["groq"])
     flash_h = _primary(historical_gemini, "gemini-2.5-flash")

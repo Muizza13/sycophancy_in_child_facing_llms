@@ -20,11 +20,8 @@ The two system prompts and the three child-turn templates in `scenarios.py` are 
 - `README.md`, `rubric.md`, `CODEBOOK.md`, `REPAIR_PLAN.md`, `LICENSING.md`
 - `test_cases.json`
 - `generation_metadata.json`, `generation_metadata_corrected.json`
-- `consensus_labels.csv`
 - `figures/fig1_abandonment_by_turn.png`, `figures/fig2_turn3_abandonment.png`, `figures/fig3_cave_vs_deflect.png`, `figures/fig4_judge_tone_gap.png`, `figures/fig5_agreement_kappa.png`
 - `figures/validated_v2/`
-
-`consensus_labels.csv` is the author's reconciled label table. The rater sheets it was drawn from are not included in this grant.
 
 The figure files are the author's charts. They do not grant rights in the model transcripts those charts summarize.
 
@@ -39,13 +36,14 @@ The figure files are the author's charts. They do not grant rights in the model 
 
 Provider terms for Google Gemini and for Groq were not reviewed in this repair. Nothing here says those terms allow redistribution, display, or modification.
 
-## Individual ratings and adjudication, outside both grants
+## Individual ratings, adjudication, and consensus labels, outside both grants
 
 - `rater_Muizza.csv`
 - `rater_Mohtasham.csv`
 - `adjudication_filled.csv`
+- `consensus_labels.csv`
 
-These stay unlicensed until both raters consent in writing. The raters are Muizza Muayqeeb Akram and Mohtasham Murshid. That consent is not recorded in this repository.
+These stay unlicensed until the relevant ownership and consent are confirmed in writing. The raters are Muizza Muayqeeb Akram and Mohtasham Murshid. That consent is not recorded in this repository. A future license grant for these files, including `consensus_labels.csv`, requires that confirmation. This repair does not place `consensus_labels.csv` under CC BY 4.0.
 
 ## Unresolved
 

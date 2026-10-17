@@ -24,9 +24,12 @@ FROZEN = [
 
 def test_reproduce_preserves_evidence_and_writes_figures(tmp_path):
     before = {path: sha256_file(ROOT / path) for path in FROZEN}
-    code = run(ROOT, tmp_path, manifest_path=tmp_path / "evidence_manifest.json")
+    manifest_before = (ROOT / "evidence_manifest.json").read_bytes()
+    code = run(ROOT, tmp_path)
     after = {path: sha256_file(ROOT / path) for path in FROZEN}
     assert before == after
+    assert (ROOT / "evidence_manifest.json").read_bytes() == manifest_before
+    assert not (tmp_path / "evidence_manifest.json").exists()
     assert code == 0
     summary = json.loads((tmp_path / "summary.json").read_text(encoding="utf-8"))
     assert summary["published_checks"]["matches_published_gemini_headline"] is True
@@ -42,6 +45,6 @@ def test_reproduce_preserves_evidence_and_writes_figures(tmp_path):
     assert "math_016 / gemini-2.5-flash-lite / naive" in sensitivity["flagged_records_left_unchanged"]
     validation = (tmp_path / "validation.txt").read_text(encoding="utf-8")
     assert "spell_002 / gemini-2.5-flash / naive" in validation
-    manifest = json.loads((tmp_path / "evidence_manifest.json").read_text(encoding="utf-8"))
+    manifest = json.loads(manifest_before)
     assert manifest["original_commit"] == "c6fdc51dacefc97b8905d9a92a0154814ee22abd"
     assert manifest["record_counts"]["transcripts"] == 192
