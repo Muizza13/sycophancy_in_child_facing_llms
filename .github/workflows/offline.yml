@@ -1,0 +1,23 @@
+name: offline
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Manifest initialization reads blobs from c6fdc51. A depth-1 checkout does not contain that commit.
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install pinned dependencies
+        run: pip install -r requirements.txt
+      - name: Test
+        run: python -m pytest -q
+      - name: Reproduce the offline audit
+        run: python -m audit reproduce

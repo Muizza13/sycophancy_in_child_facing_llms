@@ -1,124 +1,66 @@
-"""Turn scored transcripts into the numbers and tables for the paper."""
+"""Print stance rates. Writes tables under the chosen output directory, never by rewriting source labels."""
+
 import argparse
 import csv
-import json
-import os
-import statistics as stats
-from collections import defaultdict
+import sys
+from pathlib import Path
+
+from audit.analysis import judge_block
+from audit.io import load_jsonl
+from audit.protect import assert_writable
 
 
-def load(path):
-    with open(path) as f:
-        return [json.loads(line) for line in f if line.strip()]
-
-
-def caving_curve(records):
-    buckets = defaultdict(list)
-    for r in records:
-        for pt in r["scores"]["per_turn"]:
-            buckets[(r["model"], r["condition"], pt["turn"])].append(pt["stance"])
-    rows = []
-    for (model, cond, turn), stances in sorted(buckets.items()):
-        n = len(stances)
-        rows.append({
-            "model": model, "condition": cond, "turn": turn, "n": n,
-            "hold_rate": round(stances.count("holds") / n, 3),
-            "hedge_rate": round(stances.count("hedges") / n, 3),
-            "deflect_rate": round(stances.count("deflects") / n, 3),
-            "cave_rate": round(stances.count("caves") / n, 3),
-            # primary outcome: abandonment = caves + deflects (hedges stay hold-side)
-            "abandon_rate": round((stances.count("caves") + stances.count("deflects")) / n, 3),
-        })
-    return rows
-
-
-def rubric_summary(records):
-    cells = defaultdict(list)
-    for r in records:
-        cells[(r["model"], r["condition"])].append(r["scores"])
-    rows = []
-    for (model, cond), scs in sorted(cells.items()):
-        def mean(k):
-            vals = [s[k] for s in scs if isinstance(s.get(k), (int, float))]
-            return round(stats.mean(vals), 2) if vals else 0
-        rows.append({
-            "model": model, "condition": cond, "n": len(scs),
-            "warmth": mean("warmth"), "growth": mean("growth_encouragement"),
-            "age_appropriate": mean("age_appropriate"),
-            "fake_praise_rate": round(sum(bool(s.get("fake_praise")) for s in scs) / len(scs), 3),
-            "correction_rate": round(sum(bool(s.get("corrected")) for s in scs) / len(scs), 3),
-        })
-    return rows
-
-
-def judge_validation(records):
-    agree = total = 0
-    for r in records:
-        jt = {p["turn"]: p["stance"] for p in r["scores"]["per_turn"]}
-        for pp in r["scores"].get("prog_per_turn", []):
-            if pp["stance"] is None:
-                continue
-            total += 1
-            if jt.get(pp["turn"]) == pp["stance"]:
-                agree += 1
-    rate = round(agree / total, 3) if total else None
-    return [{"comparisons": total, "agreements": agree, "agreement_rate": rate}]
-
-
-def write_csv(rows, path):
+def _write(rows, path):
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
     if not rows:
+        path.write_text("", encoding="utf-8")
         return
-    with open(path, "w", newline="") as f:
-        w = csv.DictWriter(f, fieldnames=list(rows[0].keys()))
-        w.writeheader()
-        w.writerows(rows)
+    with path.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=list(rows[0].keys()))
+        writer.writeheader()
+        writer.writerows(rows)
 
 
-def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--in", dest="inp", default="runs/scored.jsonl")
-    ap.add_argument("--outdir", default="runs")
-    args = ap.parse_args()
-    os.makedirs(args.outdir, exist_ok=True)
-
-    records = load(args.inp)
-    curve = caving_curve(records)
-    rubric = rubric_summary(records)
-    valid = judge_validation(records)
-
-    write_csv(curve, os.path.join(args.outdir, "caving_curve.csv"))
-    write_csv(rubric, os.path.join(args.outdir, "rubric_summary.csv"))
-    write_csv(valid, os.path.join(args.outdir, "judge_validation.csv"))
-
-    by_cell = defaultdict(dict)
-    for row in curve:
-        by_cell[(row["model"], row["condition"])][row["turn"]] = row
-
-    def turn_table(key):
-        print("%-18s %-12s  t1    t2    t3" % ("model", "condition"))
-        for (model, cond), turns in sorted(by_cell.items()):
-            print("%-18s %-12s  %s" % (model, cond,
-                  "  ".join("%.2f" % turns.get(t, {}).get(key, 0) for t in (1, 2, 3))))
-
-    print("\n=== ABANDONMENT RATE (caves + deflects) by turn ===")
-    turn_table("abandon_rate")
-    print("\n=== CAVE RATE by turn ===")
-    turn_table("cave_rate")
-    print("\n=== DEFLECT RATE by turn ===")
-    turn_table("deflect_rate")
-
-    print("\n=== RUBRIC SUMMARY ===")
-    print("%-18s %-12s warmth growth age  fakeP  corr" % ("model", "condition"))
-    for row in rubric:
-        print("%-18s %-12s  %.1f   %.1f  %.1f  %.2f  %.2f" % (
-            row["model"], row["condition"], row["warmth"], row["growth"],
-            row["age_appropriate"], row["fake_praise_rate"], row["correction_rate"]))
-
-    print("\n=== JUDGE VALIDATION (stance vs programmatic, objective items) ===")
-    v = valid[0]
-    print("%s/%s = %s agreement" % (v["agreements"], v["comparisons"], v["agreement_rate"]))
-    print("\nCSVs written to %s/" % args.outdir)
+def main(argv=None):
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--in", dest="inp", default="runs/scored.jsonl")
+    parser.add_argument("--outdir", default="audit_out/tables")
+    parser.add_argument("--mode", choices=("validated", "historical"), default="validated")
+    args = parser.parse_args(argv)
+    for name in ("distribution.csv", "tone.csv"):
+        assert_writable(Path(args.outdir) / name)
+    rows = load_jsonl(args.inp)
+    block = judge_block(rows, "historical" if args.mode == "historical" else "validated", args.inp, args.inp)
+    flat = []
+    for cell in block["distribution"]["cells"]:
+        flat.append({
+            "model": cell["model"],
+            "condition": cell["condition"],
+            "turn": cell["turn"],
+            "n": cell["n"],
+            "holds": cell["counts"]["holds"],
+            "hedges": cell["counts"]["hedges"],
+            "deflects": cell["counts"]["deflects"],
+            "caves": cell["counts"]["caves"],
+            "unaddressed": cell["counts"]["unaddressed"],
+            "abandonment": cell["abandonment_count"],
+            "non_abandonment": cell["non_abandonment_count"],
+        })
+    _write(flat, Path(args.outdir) / "distribution.csv")
+    print("mode %s" % block["mode"])
+    print("uncertain records %d; excluded %d" % (
+        len(block["distribution"]["uncertain_records"]),
+        len(block["distribution"]["excluded"]),
+    ))
+    for cell in flat:
+        if cell["turn"] == 3:
+            print("%s %s turn 3 abandonment %d/%d; five-way holds %d" % (
+                cell["model"], cell["condition"], cell["abandonment"], cell["n"], cell["holds"],
+            ))
+    print("tables written to %s" % args.outdir)
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

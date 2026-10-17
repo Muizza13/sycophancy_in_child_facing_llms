@@ -1,0 +1,280 @@
+{
+  "frozen_files": [
+    {
+      "bytes": 11294,
+      "path": "test_cases.json",
+      "sha256": "0f6eaabc8be2cf340c4909571a3f9169eb11aa600288d93ebd36dcc94b2ae475"
+    },
+    {
+      "bytes": 571541,
+      "path": "runs/transcripts.jsonl",
+      "sha256": "89a42cb6f66cf4cec13d5633cb50ff6d4e44bd9fdb5c40f74603fde2255a6b5b"
+    },
+    {
+      "bytes": 643703,
+      "path": "runs/scored.jsonl",
+      "sha256": "378bc33e717d13ade2706a0543201268fb41287b3cb2b804dac2b561e6e7b3cf"
+    },
+    {
+      "bytes": 644412,
+      "path": "runs/scored_groq.jsonl",
+      "sha256": "fb3366e6db2156902504f53f0203007f37855d0bc3f968590279f0a5943793c7"
+    },
+    {
+      "bytes": 4723,
+      "path": "rating_key.csv",
+      "sha256": "c77fe1c0a16c7ff1e7eb6151f16f3a5415c045c4ced9e60b40a5824fbda47c2b"
+    },
+    {
+      "bytes": 206088,
+      "path": "rater_Muizza.csv",
+      "sha256": "a2ef268141d80ff582877848f12a6b55792c192b09d4c8c4bef852041673c4dc"
+    },
+    {
+      "bytes": 5071,
+      "path": "rater_Mohtasham.csv",
+      "sha256": "2d867012bb4220fa76beb135f0cf75000c0323a017d081a6842f3d14c5b12bd1"
+    },
+    {
+      "bytes": 134841,
+      "path": "adjudication_filled.csv",
+      "sha256": "4f0f5553c74da4c39ffba94941076a6bd7320c1096fb3cefe5829e68a341f48b"
+    },
+    {
+      "bytes": 1684,
+      "path": "consensus_labels.csv",
+      "sha256": "72f45681b8f5f30504c984173d0e166f2761d958a0ef17f8ed61fd941644bf40"
+    },
+    {
+      "bytes": 2607,
+      "path": "generation_metadata.json",
+      "sha256": "85d7e8a41a5709eea22436fdefea1b74f29cc4bba8bfd7078ae5bd87b88643f3"
+    },
+    {
+      "bytes": 77857,
+      "path": "figures/fig1_abandonment_by_turn.png",
+      "sha256": "9f3965e73b70dc26bda16d0fb30b5d730195c41002c15bb000202afa8dd2428c"
+    },
+    {
+      "bytes": 47144,
+      "path": "figures/fig2_turn3_abandonment.png",
+      "sha256": "3b8f7f5107baba3629a58a2ec2e23d236a448098f2336fb41ebaf281cec90ebf"
+    },
+    {
+      "bytes": 41991,
+      "path": "figures/fig3_cave_vs_deflect.png",
+      "sha256": "4e017754af613068d6f1fe7dc0d7d1e7bfc77e4f5baec400aaade3e7e5d46796"
+    },
+    {
+      "bytes": 40084,
+      "path": "figures/fig4_judge_tone_gap.png",
+      "sha256": "d556cc837988e9b8fdd5004f72989558908b216797b0b7cbb7fb112a9a8c2857"
+    },
+    {
+      "bytes": 69491,
+      "path": "figures/fig5_agreement_kappa.png",
+      "sha256": "c0aaa0885d40d48e40d39eb1c361d653cc161284fa83e71fa9c95d17bd428571"
+    }
+  ],
+  "historical_generation_metadata": {
+    "counts": {
+      "adjudicated_disagreements": 49,
+      "cases": 48,
+      "conditions": [
+        "naive",
+        "pedagogical"
+      ],
+      "consensus_labels": 80,
+      "gemini_judge_records": 192,
+      "gptoss_judge_records": 192,
+      "rated_sample_items": 80,
+      "transcripts": 192,
+      "turns_per_transcript": 3
+    },
+    "dataset_version": "1.1",
+    "error_type_distribution": {
+      "arithmetic": 16,
+      "factual": 15,
+      "reasoning": 9,
+      "spelling": 8
+    },
+    "human_raters": {
+      "gold_standard": "consensus_labels.csv (abandonment = caves + deflects; hedges hold-side; reconciled after adjudication of the 49 disagreements)",
+      "rated_items": 80,
+      "rater_A": "Muizza Muayqeeb Akram (author and project lead; primary rater)",
+      "rater_B": "Mohtasham (second independent rater; used only to measure inter-rater reliability)"
+    },
+    "id_scheme": {
+      "item_id": "case_id (e.g. math_001, fact_003, spell_002, reason_009)",
+      "join_key": [
+        "case_id",
+        "model",
+        "condition"
+      ],
+      "model_id": "model (gemini-2.5-flash | gemini-2.5-flash-lite)",
+      "prompt_id": "condition (naive | pedagogical)"
+    },
+    "judges": [
+      {
+        "model": "gemini-2.5-flash",
+        "name": "gemini",
+        "role": "Primary scalable stance proxy over all 192 transcripts; also same-family tone; its ~0.7-0.8 pt gap from the GPT-OSS judge is treated as a measurement caution, not demonstrated self-enhancement.",
+        "temperature": 0
+      },
+      {
+        "max_tokens": 512,
+        "model": "openai/gpt-oss-20b",
+        "name": "gptoss",
+        "reasoning_effort": "low",
+        "role": "Independent cross-family judge for stance validation and de-biased tone.",
+        "served_via": "Groq",
+        "temperature": 0
+      }
+    ],
+    "packaged_utc": "2026-09-06",
+    "pressure_protocol": "3-turn escalation: assert, push back with false confidence, emotional appeal plus false authority",
+    "project": "Tone Safety and Sycophancy in Child-Facing LLM Tutors",
+    "raw_judge_text_note": "The pipeline persisted each judge's PARSED structured output (per-turn stance labels plus warmth/growth/age tone scores), not the raw completion text. Raw text can be regenerated deterministically with scripts/judge.py (judges run at temperature 0).",
+    "raw_judge_text_retained": false,
+    "tutor_decoding": {
+      "completions_per_item": 1,
+      "length_cap": null,
+      "note": "Decoding was left at provider defaults in this pilot; see the report's limitations. Edit if you pinned a temperature.",
+      "temperature": "provider default (unpinned)"
+    },
+    "tutor_models": [
+      "gemini-2.5-flash",
+      "gemini-2.5-flash-lite"
+    ]
+  },
+  "identifier_scheme": {
+    "case_id": "prefix_NNN from test_cases.json. Observed prefixes: ['fact', 'math', 'reason', 'spell']",
+    "case_ids": [
+      "math_001",
+      "math_002",
+      "math_003",
+      "math_004",
+      "math_005",
+      "math_006",
+      "math_007",
+      "math_008",
+      "math_009",
+      "math_010",
+      "math_011",
+      "math_012",
+      "math_013",
+      "math_014",
+      "math_015",
+      "math_016",
+      "fact_001",
+      "fact_002",
+      "fact_003",
+      "fact_004",
+      "fact_005",
+      "fact_006",
+      "fact_007",
+      "fact_008",
+      "fact_009",
+      "fact_010",
+      "fact_011",
+      "fact_012",
+      "fact_013",
+      "fact_014",
+      "fact_015",
+      "spell_001",
+      "spell_002",
+      "spell_003",
+      "spell_004",
+      "spell_005",
+      "spell_006",
+      "spell_007",
+      "spell_008",
+      "reason_001",
+      "reason_002",
+      "reason_003",
+      "reason_004",
+      "reason_005",
+      "reason_006",
+      "reason_007",
+      "reason_008",
+      "reason_009"
+    ],
+    "conditions": [
+      "naive",
+      "pedagogical"
+    ],
+    "models": [
+      "gemini-2.5-flash",
+      "gemini-2.5-flash-lite"
+    ],
+    "rating_id": "R001-R080 in the frozen rating_key.csv. Future samples use a different id prefix and a new directory.",
+    "transcript_key": [
+      "case_id",
+      "model",
+      "condition"
+    ],
+    "turns": [
+      1,
+      2,
+      3
+    ]
+  },
+  "known_malformed_judge_records": [
+    {
+      "file": "runs/scored_groq.jsonl",
+      "handling": "left unchanged; turn alignment flagged uncertain",
+      "record_id": "spell_002 / gemini-2.5-flash / naive",
+      "scored_turn_ids": [
+        1,
+        2,
+        3,
+        4
+      ]
+    },
+    {
+      "file": "runs/scored_groq.jsonl",
+      "handling": "left unchanged; turn alignment flagged uncertain",
+      "record_id": "math_004 / gemini-2.5-flash-lite / pedagogical",
+      "scored_turn_ids": [
+        1,
+        2,
+        3,
+        4
+      ]
+    },
+    {
+      "file": "runs/scored_groq.jsonl",
+      "handling": "left unchanged; turn alignment flagged uncertain",
+      "record_id": "math_016 / gemini-2.5-flash-lite / naive",
+      "scored_turn_ids": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
+      ]
+    }
+  ],
+  "known_missing_or_unverified_settings": [
+    "Tutor calls in the historical models.py sent no generationConfig. Temperature, max tokens, and the returned model version were not logged.",
+    "The Gemini judge request in the historical judge.py sent no temperature field. The provider default at call time was not recorded. Do not read the old metadata temperature 0 as a verified Gemini judge setting.",
+    "The Groq judge builder sets temperature 0, max_tokens 512, and reasoning_effort low for gpt-oss. No stored HTTP request or response confirms the historical call used that body.",
+    "Raw judge completions were not retained. Temperature 0 would not by itself recover them, and the Gemini call did not set temperature.",
+    "Transcript files have no timestamps, request ids, or system-prompt hashes.",
+    "The seed, stratum membership, and exact inclusion rule for the historical 80 rating ids were not saved. Rerunning the committed sampler does not reproduce rating_key.csv.",
+    "Returned model versions and finish reasons were not saved."
+  ],
+  "original_commit": "c6fdc51dacefc97b8905d9a92a0154814ee22abd",
+  "record_counts": {
+    "adjudication_rows": 49,
+    "cases": 48,
+    "consensus_rows": 80,
+    "gemini_judge_records": 192,
+    "gptoss_judge_records": 192,
+    "rater_mohtasham_rows": 80,
+    "rater_muizza_rows": 80,
+    "rating_key_rows": 80,
+    "transcripts": 192
+  }
+}
